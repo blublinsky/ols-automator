@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# uv
+.python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment and secrets
+.env
+.env.*
+*_api_key.txt
+
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+tests/test_results/
+
+# Linter/type caches
+.mypy_cache/
+.ruff_cache/
+
+# Local config overrides
+scratch/
+tmp/
+logs/

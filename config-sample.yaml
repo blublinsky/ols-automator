@@ -1,0 +1,36 @@
+# Sample OLS Automator configuration
+# Copy to your config path and set OLS_AUTOMATOR_CONFIG=/path/to/config.yaml
+
+database_url: postgresql+asyncpg://ols_automator:ols_automator@localhost:5432/ols_automator
+
+policies:
+  - name: alert-remediation
+    event_types:
+      - alert
+      - warning
+    phases:
+      - name: assess
+        mode: automatic
+        operation: "Analyze this alert and suggest remediation steps"
+      - name: approve
+        mode: manual
+      - name: remediate
+        mode: automatic
+        operation: "Execute the approved remediation"
+      - name: completed
+
+  - name: deployment-review
+    event_types:
+      - deployment
+    phases:
+      - name: validate
+        mode: automatic
+        operation: "Validate this deployment request against cluster policies"
+      - name: approve
+        mode: manual
+      - name: completed
+
+agents:
+  - name: ols
+    url: http://lightspeed-app-server.openshift-lightspeed.svc:8080
+    timeout: 30

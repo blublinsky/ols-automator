@@ -1,0 +1,32 @@
+[project]
+name = "ols-automator"
+version = "0.1.0"
+description = "Policy-driven event processing engine"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "pydantic>=2.10",
+    "prometheus-client>=0.21",
+    "a2a-sdk>=0.3.25",
+    "httpx>=0.28",
+    "qdrant-client>=1.12",
+    "rank-bm25>=0.2",
+    "sentence-transformers>=3.3",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.20",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-pyyaml>=6.0.12.20260408",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
