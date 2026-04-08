@@ -27,7 +27,7 @@ Policy-driven event processing engine. Receives generic events via REST API, mat
                  +-----+------+         +------+-----+
                  | RAG match  |         |  Manual    |
                  | operation  |         |  review    |
-                 | to skill   |         |  (human)   |
+                 | to agent   |         |  (human)   |
                  +-----+------+         +------------+
                        |
                  +-----+------+
