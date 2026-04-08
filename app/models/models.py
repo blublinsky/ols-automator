@@ -1,7 +1,5 @@
 """Data models — pure definitions, no mutable state."""
 
-from __future__ import annotations
-
 import os
 from datetime import datetime
 from typing import Final, Literal, Self
