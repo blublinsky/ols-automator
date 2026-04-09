@@ -148,6 +148,68 @@ class TestRunPhase:
         assert wi.ready is True
         assert wi.step_results.get("assess") == "assessment result"
 
+    async def test_step_results_passed_to_next_agent(self, app_config, session):
+        session.add(
+            _make_item(
+                phase="remediate",
+                step_results={"assess": "root cause: OOM"},
+            )
+        )
+        await session.commit()
+
+        policy = app_config.policies[0]
+        phase_config = policy.get_phase("remediate")
+        item = _make_item(
+            phase="remediate",
+            step_results={"assess": "root cause: OOM"},
+        )
+
+        with patch(
+            "app.services.orchestrator._invoke_agent",
+            new_callable=AsyncMock,
+            return_value="remediation done",
+        ) as mock_invoke:
+            await _run_phase(item, policy, phase_config)
+
+        prompt = mock_invoke.call_args[0][0]
+        passed_item = mock_invoke.call_args[0][1]
+        assert "execute remediation" in prompt
+        assert passed_item.step_results["assess"] == "root cause: OOM"
+
+    async def test_step_results_included_in_prompt(self, app_config, session):
+        from unittest.mock import MagicMock
+
+        from app.models.models import AgentConfig
+        from app.services.orchestrator import _invoke_agent
+
+        item = _make_item(
+            phase="remediate",
+            step_results={"assess": "root cause: OOM"},
+            event_content="Pod crashed",
+        )
+
+        mock_rag = MagicMock()
+        mock_rag.match.return_value = ("test-agent", "test-skill")
+
+        card = MagicMock()
+        app_config.skill_rag = mock_rag
+        app_config.agent_cards = {"test-agent": card}
+        app_config.agents = [
+            AgentConfig(name="test-agent", url="http://localhost:9999"),
+        ]
+
+        with patch(
+            "app.services.orchestrator.send_message",
+            new_callable=AsyncMock,
+            return_value="done",
+        ) as mock_send:
+            await _invoke_agent("execute remediation", item)
+
+        prompt = mock_send.call_args[0][1]
+        assert "Previous results:" in prompt
+        assert "[assess]: root cause: OOM" in prompt
+        assert "Pod crashed" in prompt
+
     async def test_agent_failure_marks_failed(self, app_config, session):
         session.add(_make_item(phase="assess"))
         await session.commit()

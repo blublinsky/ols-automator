@@ -2,6 +2,7 @@
 # Copy to your config path and set OLS_AUTOMATOR_CONFIG=/path/to/config.yaml
 
 database_url: postgresql+asyncpg://ols_automator:ols_automator@localhost:5432/ols_automator
+embedding_model: all-MiniLM-L6-v2
 
 policies:
   - name: alert-remediation

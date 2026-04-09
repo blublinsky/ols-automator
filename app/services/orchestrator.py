@@ -10,7 +10,7 @@ from sqlalchemy import and_, case, delete, func, select, update
 from app import metrics
 from app.models.config import get_config
 from app.models.models import PhaseConfig, Policy, WorkItem, MANUAL, COMPLETED, FAILED
-from app.services.a2a_client import fetch_agent_card, send_message
+from app.services.a2a_client import send_message
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +81,10 @@ async def _run_phase(item: WorkItem, policy: Policy, phase_config: PhaseConfig) 
         if cursor.rowcount == 0:  # type: ignore[attr-defined]
             return
 
+    logger.info("Claimed %s: phase=%s, mode=%s", item_id, item.phase, phase_config.mode)
+
     if phase_config.mode == MANUAL:
-        logger.info(
-            "(%s, %s) on %s awaiting review", item.event_type, item.phase, item_id
-        )
+        logger.info("%s awaiting manual review", item_id)
         return
 
     agent_result: str | None = None
@@ -138,14 +138,30 @@ async def _invoke_agent(operation: str, item: WorkItem) -> str:
         raise RuntimeError(f"No agent matched operation: {operation}")
 
     agent_name, skill_id = match
+    logger.info(
+        "RAG matched operation %r → agent=%s, skill=%s",
+        operation[:80],
+        agent_name,
+        skill_id,
+    )
+
     agent = next((a for a in cfg.agents if a.name == agent_name), None)
     if not agent:
         raise RuntimeError(f"Agent '{agent_name}' not in configuration")
 
-    headers = agent.resolve_headers()
-    card = await fetch_agent_card(agent.url, headers, agent.timeout)
+    card = cfg.agent_cards.get(agent_name)
+    if not card:
+        raise RuntimeError(f"No cached card for agent '{agent_name}'")
 
-    prompt = f"{operation}\n\nContext:\n{item.event_content}"
+    headers = agent.resolve_headers()
+
+    parts = [operation, "", "Context:", item.event_content]
+    if item.step_results:
+        parts.append("")
+        parts.append("Previous results:")
+        for phase_name, result in item.step_results.items():
+            parts.append(f"[{phase_name}]: {result}")
+    prompt = "\n".join(parts)
     t0 = time.monotonic()
     try:
         return await send_message(card, prompt, headers, skill_id)

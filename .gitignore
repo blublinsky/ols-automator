@@ -16,6 +16,7 @@ venv/
 .vscode/
 *.swp
 *.swo
+*.iml
 .DS_Store
 
 # Environment and secrets
@@ -37,3 +38,6 @@ tests/test_results/
 scratch/
 tmp/
 logs/
+
+# Local dev databases
+*.db

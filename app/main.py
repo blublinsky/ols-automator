@@ -15,6 +15,14 @@ from app.routes import events, items
 from app.services import orchestrator
 from app.services.agent_rag import discover_agents
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+logging.getLogger("a2a.client.card_resolver").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 _loop_task: asyncio.Task | None = None

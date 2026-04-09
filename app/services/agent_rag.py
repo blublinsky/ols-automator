@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 import re
 import uuid
 from collections.abc import Callable
@@ -21,12 +20,13 @@ from app.models.models import AgentConfig
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.environ.get("OLS_AUTOMATOR_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
-
-def default_encode_fn() -> Callable[[str], list[float]]:
+def _make_encode_fn(model_name: str) -> Callable[[str], list[float]]:
     """Create an embedding function using sentence-transformers."""
-    model = SentenceTransformer(DEFAULT_MODEL)
+    for name in ("sentence_transformers", "transformers"):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+    model = SentenceTransformer(model_name)
 
     def encode(text: str) -> list[float]:
         return model.encode(text, normalize_embeddings=True).tolist()
@@ -255,12 +255,10 @@ class AgentSkillRAG:
         self,
         encode_fn: Callable[[str], list[float]],
         alpha: float = 0.8,
-        top_k: int = 5,
-        threshold: float = 0.01,
+        top_k: int = 10,
     ) -> None:
         self.alpha = alpha
         self.top_k = top_k
-        self.threshold = threshold
         self._encode = encode_fn
         self.bm25: BM25Okapi | None = None
         self.store = _QdrantStore(self._COLLECTION)
@@ -298,13 +296,12 @@ class AgentSkillRAG:
 
         self.store.upsert(ids, dense_docs, vectors, metadatas=metadatas)
         self._rebuild_bm25()
-        logger.info("Indexed %d skills from agent '%s'", len(skills), agent_name)
 
     def match(self, operation: str) -> tuple[str, str] | None:
         """Find the best agent and skill for an operation.
 
         Returns the single highest-scoring (agent_name, skill_id) pair,
-        or None if nothing exceeds the threshold.
+        or None if no skills are indexed.
         """
         q_vec = self._encode(operation)
 
@@ -323,11 +320,10 @@ class AgentSkillRAG:
         if not fused:
             return None
 
-        best_id, best_score = next(iter(fused.items()))
-        if best_score < self.threshold or best_id not in metadata_lookup:
+        best_id = next(iter(fused))
+        skill = metadata_lookup.get(best_id)
+        if not skill:
             return None
-
-        skill = metadata_lookup[best_id]
         return skill["server"], skill["id"]
 
     # --- Retrieval internals ---
@@ -400,25 +396,38 @@ class AgentSkillRAG:
 
 
 async def discover_agents(agents: list[AgentConfig]) -> AgentSkillRAG | None:
-    """Fetch agent cards and build a skill RAG index.
+    """Fetch agent cards, cache them, and build a skill RAG index.
 
     Returns None if no agents are configured or all discoveries fail.
+    Cards are stored in ``get_config().agent_cards`` for later use.
     """
     if not agents:
         logger.info("No agents configured, skipping discovery")
         return None
 
+    from app.models.config import get_config
     from app.services.a2a_client import fetch_agent_card
 
-    rag = AgentSkillRAG(encode_fn=default_encode_fn())
+    cfg = get_config()
+    rag = AgentSkillRAG(encode_fn=_make_encode_fn(cfg.embedding_model))
+    total_skills = 0
 
     for agent in agents:
         try:
             card = await fetch_agent_card(
                 agent.url, agent.resolve_headers(), agent.timeout
             )
+            cfg.agent_cards[agent.name] = card
+            skill_count = len(card.skills) if card.skills else 0
             rag.populate(agent.name, card.skills)
+            total_skills += skill_count
         except Exception:
             logger.exception("Failed to discover agent '%s'", agent.name)
 
+    logger.info(
+        "Discovery complete: %d/%d agents, %d skills indexed",
+        len(cfg.agent_cards),
+        len(agents),
+        total_skills,
+    )
     return rag

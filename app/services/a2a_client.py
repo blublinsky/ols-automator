@@ -49,11 +49,15 @@ async def fetch_agent_card(
     timeout: int = 30,
 ) -> AgentCard:
     """Fetch an A2A agent card from its well-known endpoint."""
+    logger.info("Fetching agent card from %s", base_url)
     async with httpx.AsyncClient(
         headers=headers or {}, timeout=httpx.Timeout(timeout)
     ) as http:
         resolver = A2ACardResolver(http, base_url)
-        return await resolver.get_agent_card()
+        card = await resolver.get_agent_card()
+    skill_count = len(card.skills) if card.skills else 0
+    logger.info("Discovered agent '%s' (%d skills)", card.name, skill_count)
+    return card
 
 
 def _extract_task_text(task: Task) -> str:
@@ -91,15 +95,14 @@ async def send_message(
     skill_id: str | None = None,
 ) -> str:
     """Send a text message to an A2A agent and return the response text."""
-    metadata: dict[str, str] = {}
+    request_metadata: dict[str, str] = {}
     if skill_id:
-        metadata["skill_id"] = skill_id
+        request_metadata["skill_id"] = skill_id
 
     message = Message(
         message_id=uuid4().hex,
         role=Role.user,
         parts=[Part(root=TextPart(text=text))],
-        metadata=metadata or None,
     )
 
     interceptors: list[ClientCallInterceptor] = []
@@ -110,8 +113,12 @@ async def send_message(
         card, interceptors=interceptors
     )
 
+    logger.info("Sending message to %s (skill=%s)", card.name, skill_id or "none")
+
     try:
-        async for event in client.send_message(message):
+        async for event in client.send_message(
+            message, request_metadata=request_metadata or None
+        ):
             if isinstance(event, tuple):
                 task, _ = event
                 if task.status.state == TaskState.failed:
@@ -119,14 +126,26 @@ async def send_message(
                         _extract_task_text(task) or "Remote agent returned an error."
                     )
                     raise RuntimeError(error)
-                return _extract_task_text(task)
+                response = _extract_task_text(task)
+                logger.info(
+                    "Received response from %s (%d chars)",
+                    card.name,
+                    len(response),
+                )
+                return response
 
             if isinstance(event, Message):
-                return "\n".join(
+                response = "\n".join(
                     part.root.text
                     for part in event.parts
                     if isinstance(part.root, TextPart)
                 )
+                logger.info(
+                    "Received message from %s (%d chars)",
+                    card.name,
+                    len(response),
+                )
+                return response
     finally:
         await client.close()  # type: ignore[attr-defined]
 

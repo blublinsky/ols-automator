@@ -76,6 +76,7 @@ export OLS_AUTOMATOR_CONFIG=/path/to/config.yaml
 
 ```yaml
 database_url: postgresql+asyncpg://user:pass@localhost:5432/ols_automator
+embedding_model: all-MiniLM-L6-v2  # sentence-transformer model for RAG skill matching
 
 policies:
   - name: alert-remediation
@@ -107,7 +108,6 @@ agents:
 | `OLS_AUTOMATOR_CONFIG` | -- | Path to YAML config file |
 | `OLS_AUTOMATOR_DATABASE_URL` | `postgresql+asyncpg://...localhost...` | Overrides `database_url` from YAML |
 | `OLS_AUTOMATOR_AUTH_TOKEN` | -- | Bearer token for agent calls (useful for local dev; on-cluster the projected SA token is used instead) |
-| `OLS_AUTOMATOR_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformer model for RAG |
 
 ## API
 
@@ -169,22 +169,29 @@ The `content` field is an opaque string passed through to the agent as context. 
 ## Development
 
 ```bash
-# Install dependencies
-make install-deps-dev
-
-# Run locally with SQLite (no PostgreSQL needed)
-export OLS_AUTOMATOR_DATABASE_URL="sqlite+aiosqlite:///./local.db"
-make run
-
-# Run locally with PostgreSQL
-export OLS_AUTOMATOR_DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/ols_automator"
-make run
-
-# Format, lint, test
-make verify
+make install-deps-dev   # install runtime + dev dependencies
+make run                # start with --reload on port 8080
+make verify             # format + lint + test (all-in-one)
 ```
 
 Tests use SQLite in-memory by default — no database setup required.
+
+### Makefile targets
+
+| Target | Description |
+|--------|-------------|
+| `install-tools` | Install `uv` if not already present |
+| `install-deps` | Install runtime dependencies |
+| `install-deps-dev` | Install runtime + dev dependencies |
+| `update-deps` | Update lock file and sync |
+| `run` | Run the service locally with auto-reload |
+| `format` | Auto-format code with ruff |
+| `lint` | Run ruff + mypy |
+| `test` | Run all tests (alias for `test-unit`) |
+| `test-unit` | Run unit tests |
+| `verify` | Format, lint, and test in one go |
+| `images` | Build container image with podman |
+| `help` | Show all targets with descriptions |
 
 ## Project layout
 

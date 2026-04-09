@@ -26,6 +26,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "types-pyyaml>=6.0.12.20260408",
+    "a2a-sdk[http-server]>=0.3.25",
 ]
 
 [tool.pytest.ini_options]

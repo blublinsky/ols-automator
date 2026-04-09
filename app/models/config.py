@@ -7,7 +7,7 @@ import os
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from pydantic import BaseModel
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_DATABASE_URL = (
     "postgresql+asyncpg://ols_automator:ols_automator@localhost:5432/ols_automator"
 )
+DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 DATABASE_URL_ENV = "OLS_AUTOMATOR_DATABASE_URL"
 CONFIG_PATH_ENV = "OLS_AUTOMATOR_CONFIG"
 
@@ -37,12 +38,14 @@ class AppConfig:
     """Central runtime configuration — everything the app needs to run."""
 
     database_url: str = DEFAULT_DATABASE_URL
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
     policies: list[Policy] = field(default_factory=list)
     agents: list[AgentConfig] = field(default_factory=list)
 
     engine: AsyncEngine = field(init=False, repr=False)
     session_factory: async_sessionmaker[AsyncSession] = field(init=False, repr=False)
     skill_rag: AgentSkillRAG | None = field(default=None, init=False, repr=False)
+    agent_cards: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         engine_kwargs: dict = {}
@@ -78,6 +81,7 @@ class AppConfig:
 
         return cls(
             database_url=database_url,
+            embedding_model=schema.embedding_model,
             policies=schema.policies,
             agents=schema.agents,
         )
@@ -87,6 +91,7 @@ class _ConfigFile(BaseModel):
     """Pydantic schema for the YAML config file."""
 
     database_url: str = DEFAULT_DATABASE_URL
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
     policies: list[Policy] = []
     agents: list[AgentConfig] = []
 
