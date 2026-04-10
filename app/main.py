@@ -51,9 +51,13 @@ async def lifespan(_application: FastAPI):
 
 
 app = FastAPI(
-    title="OLS Automator",
-    description="Policy-driven event processing engine",
+    title="OLS Automator — OpenAPI",
+    description="Policy-driven event processing engine for OpenShift Lightspeed.",
     version="0.1.0",
+    license_info={
+        "name": "Apache 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
+    },
     lifespan=lifespan,
 )
 
@@ -64,7 +68,7 @@ metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
 
-@app.get("/readiness")
+@app.get("/readiness", tags=["health"], summary="Readiness probe")
 async def readiness():
     """Readiness probe — verifies the database is reachable."""
     try:
@@ -76,7 +80,7 @@ async def readiness():
     return {"status": "ok"}
 
 
-@app.get("/liveness")
+@app.get("/liveness", tags=["health"], summary="Liveness probe")
 async def liveness():
     """Liveness probe — checks the reconciler is still running."""
     if _loop_task and _loop_task.done():

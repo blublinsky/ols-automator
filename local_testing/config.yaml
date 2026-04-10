@@ -1,0 +1,34 @@
+database_url: "sqlite+aiosqlite:///./local.db"
+embedding_model: "all-MiniLM-L6-v2"
+
+policies:
+  - name: alert-remediation
+    event_types:
+      - alert
+    phases:
+      - name: assess
+        mode: automatic
+        operation: "Analyze this alert and suggest remediation"
+      - name: approve
+        mode: manual
+      - name: remediate
+        mode: automatic
+        operation: "Execute the approved remediation"
+      - name: completed
+
+  - name: app-deployment
+    event_types:
+      - deployment
+    phases:
+      - name: rollout
+        mode: automatic
+        operation: "Deploy the new version of the application"
+      - name: completed
+
+agents:
+  - name: cluster-ops
+    url: http://localhost:9090
+    timeout: 30
+  - name: deployer
+    url: http://localhost:9091
+    timeout: 30

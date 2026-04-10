@@ -1,4 +1,4 @@
-.PHONY: run test test-unit lint format verify install-deps install-deps-dev update-deps images help
+.PHONY: run test test-unit lint format verify schema install-deps install-deps-dev update-deps images help
 
 export PATH := $(HOME)/.local/bin:$(PATH)
 
@@ -40,6 +40,11 @@ test-unit: ## Run unit tests
 	uv run pytest tests/unit/ -v
 
 verify: format lint test ## Format, lint, and test in one go
+
+# --- Schema ---
+
+schema: ## Generate OpenAPI schema into docs/openapi.json
+	uv run python -m scripts.generate_openapi_schema docs/openapi.json
 
 # --- Container ---
 

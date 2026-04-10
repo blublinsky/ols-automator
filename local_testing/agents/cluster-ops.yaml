@@ -1,0 +1,37 @@
+name: cluster-ops
+description: "Cluster operations agent — analyzes alerts and executes remediations."
+port: 9090
+
+skills:
+  - id: alert-analysis
+    name: Alert Analysis
+    description: "Analyze cluster alerts and suggest remediation steps."
+    tags: [alert, analysis, openshift, diagnostics]
+    examples:
+      - "Analyze this alert and suggest remediation"
+      - "What is causing this pod to crash?"
+    response: |
+      Analysis complete.
+
+      Root cause: Pod is OOMKilled due to memory limit of 256Mi
+      while the application requires ~400Mi under load.
+
+      Recommended remediation:
+      1. Increase memory limit to 512Mi
+      2. Review application memory profile for leaks
+      3. Consider adding a HorizontalPodAutoscaler
+
+  - id: remediation-execution
+    name: Remediation Execution
+    description: "Execute approved remediation actions on the cluster."
+    tags: [remediation, execution, openshift]
+    examples:
+      - "Execute the approved remediation"
+      - "Scale down the problematic deployment"
+    response: |
+      Remediation applied successfully.
+
+      Actions taken:
+      1. Updated deployment memory limit: 256Mi → 512Mi
+      2. Rolling restart initiated
+      3. New pods healthy after 30s

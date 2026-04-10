@@ -1,0 +1,560 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "OLS Automator \u2014 OpenAPI",
+        "description": "Policy-driven event processing engine for OpenShift Lightspeed.",
+        "license": {
+            "name": "Apache 2.0",
+            "url": "https://www.apache.org/licenses/LICENSE-2.0.html"
+        },
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/api/v1/events": {
+            "post": {
+                "tags": [
+                    "events"
+                ],
+                "summary": "Ingest an event",
+                "description": "Receive a single event, match against policy, and store for processing.",
+                "operationId": "receive_event_api_v1_events_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Event"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EventResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/items": {
+            "get": {
+                "tags": [
+                    "items"
+                ],
+                "summary": "List work items",
+                "description": "List work items, optionally filtered by phase or event type.",
+                "operationId": "list_items_api_v1_items_get",
+                "parameters": [
+                    {
+                        "name": "phase",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by phase",
+                            "title": "Phase"
+                        },
+                        "description": "Filter by phase"
+                    },
+                    {
+                        "name": "event_type",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by event type",
+                            "title": "Event Type"
+                        },
+                        "description": "Filter by event type"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkItemSummary"
+                                    },
+                                    "title": "Response List Items Api V1 Items Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/items/{key}": {
+            "get": {
+                "tags": [
+                    "items"
+                ],
+                "summary": "Get work item detail",
+                "description": "Get full details of a work item.",
+                "operationId": "get_item_api_v1_items__key__get",
+                "parameters": [
+                    {
+                        "name": "key",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkItemDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/items/{key}/review": {
+            "post": {
+                "tags": [
+                    "items"
+                ],
+                "summary": "Approve or deny a work item",
+                "description": "Approve or deny a work item in a manual phase.",
+                "operationId": "review_item_api_v1_items__key__review_post",
+                "parameters": [
+                    {
+                        "name": "key",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReviewRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ReviewResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/readiness": {
+            "get": {
+                "tags": [
+                    "health"
+                ],
+                "summary": "Readiness probe",
+                "description": "Readiness probe \u2014 verifies the database is reachable.",
+                "operationId": "readiness_readiness_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/liveness": {
+            "get": {
+                "tags": [
+                    "health"
+                ],
+                "summary": "Liveness probe",
+                "description": "Liveness probe \u2014 checks the reconciler is still running.",
+                "operationId": "liveness_liveness_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Event": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Type"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content"
+                    },
+                    "ts": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Ts"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "type",
+                    "content",
+                    "ts"
+                ],
+                "title": "Event",
+                "description": "Inbound event payload."
+            },
+            "EventResponse": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "stored": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Stored"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "status"
+                ],
+                "title": "EventResponse",
+                "description": "Response from the event ingestion endpoint."
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "ReviewRequest": {
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "enum": [
+                            "approve",
+                            "deny"
+                        ],
+                        "title": "Command"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "title": "Reason",
+                        "default": ""
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "command"
+                ],
+                "title": "ReviewRequest"
+            },
+            "ReviewResponse": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "key": {
+                        "type": "string",
+                        "title": "Key"
+                    },
+                    "phase": {
+                        "type": "string",
+                        "title": "Phase"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "status",
+                    "key",
+                    "phase"
+                ],
+                "title": "ReviewResponse"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            },
+            "WorkItemDetail": {
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "title": "Key"
+                    },
+                    "event_name": {
+                        "type": "string",
+                        "title": "Event Name"
+                    },
+                    "event_type": {
+                        "type": "string",
+                        "title": "Event Type"
+                    },
+                    "phase": {
+                        "type": "string",
+                        "title": "Phase"
+                    },
+                    "manual": {
+                        "type": "boolean",
+                        "title": "Manual"
+                    },
+                    "policy_name": {
+                        "type": "string",
+                        "title": "Policy Name"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "event_content": {
+                        "type": "string",
+                        "title": "Event Content"
+                    },
+                    "ready": {
+                        "type": "boolean",
+                        "title": "Ready"
+                    },
+                    "step_results": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Step Results"
+                    },
+                    "failure_reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Failure Reason"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "key",
+                    "event_name",
+                    "event_type",
+                    "phase",
+                    "manual",
+                    "policy_name",
+                    "created_at",
+                    "event_content",
+                    "ready",
+                    "step_results",
+                    "failure_reason",
+                    "updated_at"
+                ],
+                "title": "WorkItemDetail",
+                "description": "Full view returned by detail endpoint."
+            },
+            "WorkItemSummary": {
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "title": "Key"
+                    },
+                    "event_name": {
+                        "type": "string",
+                        "title": "Event Name"
+                    },
+                    "event_type": {
+                        "type": "string",
+                        "title": "Event Type"
+                    },
+                    "phase": {
+                        "type": "string",
+                        "title": "Phase"
+                    },
+                    "manual": {
+                        "type": "boolean",
+                        "title": "Manual"
+                    },
+                    "policy_name": {
+                        "type": "string",
+                        "title": "Policy Name"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "key",
+                    "event_name",
+                    "event_type",
+                    "phase",
+                    "manual",
+                    "policy_name",
+                    "created_at"
+                ],
+                "title": "WorkItemSummary",
+                "description": "Compact view returned by list endpoint."
+            }
+        }
+    }
+}

@@ -27,7 +27,7 @@ class EventResponse(BaseModel):
     reason: str | None = None
 
 
-@router.post("/events", response_model=EventResponse)
+@router.post("/events", response_model=EventResponse, summary="Ingest an event")
 async def receive_event(
     event: Event,
     session: AsyncSession = Depends(get_session),

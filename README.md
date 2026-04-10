@@ -111,6 +111,14 @@ agents:
 
 ## API
 
+Full OpenAPI specification is available at runtime:
+
+- **Swagger UI**: `http://<host>:8080/docs`
+- **ReDoc**: `http://<host>:8080/redoc`
+- **Raw JSON**: `http://<host>:8080/openapi.json`
+
+A checked-in copy lives at [`docs/openapi.json`](docs/openapi.json). Regenerate it with `make schema`.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/v1/events` | Ingest an event |
@@ -190,6 +198,7 @@ Tests use SQLite in-memory by default — no database setup required.
 | `test` | Run all tests (alias for `test-unit`) |
 | `test-unit` | Run unit tests |
 | `verify` | Format, lint, and test in one go |
+| `schema` | Generate OpenAPI schema into `docs/openapi.json` |
 | `images` | Build container image with podman |
 | `help` | Show all targets with descriptions |
 

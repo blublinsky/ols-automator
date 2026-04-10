@@ -56,7 +56,7 @@ class ReviewResponse(BaseModel):
 # --- Endpoints ---
 
 
-@router.get("/items", response_model=list[WorkItemSummary])
+@router.get("/items", response_model=list[WorkItemSummary], summary="List work items")
 async def list_items(
     phase: str | None = Query(None, description="Filter by phase"),
     event_type: str | None = Query(None, description="Filter by event type"),
@@ -72,7 +72,9 @@ async def list_items(
     return [_to_summary(item) for item in result.scalars().all()]
 
 
-@router.get("/items/{key}", response_model=WorkItemDetail)
+@router.get(
+    "/items/{key}", response_model=WorkItemDetail, summary="Get work item detail"
+)
 async def get_item(
     key: str,
     session: AsyncSession = Depends(get_session),
@@ -84,7 +86,11 @@ async def get_item(
     return _to_detail(item)
 
 
-@router.post("/items/{key}/review", response_model=ReviewResponse)
+@router.post(
+    "/items/{key}/review",
+    response_model=ReviewResponse,
+    summary="Approve or deny a work item",
+)
 async def review_item(
     key: str,
     body: ReviewRequest,
