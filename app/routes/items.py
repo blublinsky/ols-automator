@@ -1,4 +1,4 @@
-"""Work item endpoints — list, detail, and review."""
+"""Work item endpoints — list, detail, review, and delete."""
 
 import logging
 from datetime import datetime
@@ -106,13 +106,16 @@ async def review_item(
             400, f"Work item is not in a manual phase (mode={item.mode})"
         )
 
-    policy = get_config().match_policy(item.event_type)
-    if not policy:
-        raise HTTPException(500, f"No policy for event type '{item.event_type}'")
+    event_type: str = item.event_type  # type: ignore[assignment]
+    current_phase: str = item.phase  # type: ignore[assignment]
 
-    next_config = policy.next_phase(item.phase)
+    policy = get_config().match_policy(event_type)
+    if not policy:
+        raise HTTPException(500, f"No policy for event type '{event_type}'")
+
+    next_config = policy.next_phase(current_phase)
     if not next_config:
-        raise HTTPException(400, f"No next phase after '{item.phase}'")
+        raise HTTPException(400, f"No next phase after '{current_phase}'")
 
     match body.command:
         case "approve":
@@ -131,7 +134,36 @@ async def review_item(
     await session.commit()
 
     reviews_total.labels(command=body.command).inc()
-    return ReviewResponse(status=body.command, key=key, phase=item.phase)
+    phase: str = item.phase  # type: ignore[assignment]
+    return ReviewResponse(status=body.command, key=key, phase=phase)
+
+
+class DeleteResponse(BaseModel):
+    status: str
+    key: str
+
+
+@router.delete(
+    "/items/{key}",
+    response_model=DeleteResponse,
+    summary="Delete a failed work item",
+)
+async def delete_item(
+    key: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete a work item that is in the failed state."""
+    result = await session.execute(
+        select(WorkItem).where(WorkItem.key == key, WorkItem.phase == FAILED)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(404, f"No failed work item '{key}' found")
+
+    await session.delete(item)
+    await session.commit()
+    logger.info("Deleted failed work item %s", key)
+    return DeleteResponse(status="deleted", key=key)
 
 
 # --- ORM to Pydantic conversion ---

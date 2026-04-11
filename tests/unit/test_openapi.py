@@ -17,6 +17,7 @@ EXPECTED_ENDPOINTS = (
 EXPECTED_SCHEMAS = (
     "Event",
     "EventResponse",
+    "DeleteResponse",
     "ReviewRequest",
     "ReviewResponse",
     "WorkItemSummary",

@@ -43,7 +43,9 @@ async def _reconcile():
     async with cfg.session_factory() as session:
         result = await session.execute(
             select(WorkItem).where(
-                WorkItem.ready.is_(True), WorkItem.phase != COMPLETED
+                WorkItem.ready.is_(True),
+                WorkItem.phase != COMPLETED,
+                WorkItem.phase != FAILED,
             )
         )
         items = result.scalars().all()
@@ -214,7 +216,7 @@ async def _release_stale():
         for item in items:
             if item.mode == MANUAL:
                 continue
-            locked = item.locked_at
+            locked: datetime = item.locked_at  # type: ignore[assignment]
             if locked.tzinfo is None:
                 locked = locked.replace(tzinfo=timezone.utc)
             if now - locked > STALE_TIMEOUT:

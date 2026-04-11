@@ -62,6 +62,9 @@ Phase types:
 - **manual** -- item waits for human approval/denial via `POST /items/{key}/review`
 - **completed** -- terminal phase, item is cleaned up by the reconciler
 
+Implicit terminal states (not defined in policy):
+- **failed** -- item lands here on manual denial or agent execution error; excluded from the reconciler loop and kept in the database for inspection via `GET /items/{key}`
+
 Each phase's execution result is stored in the work item's `step_results` map, keyed by phase name. Subsequent phases can access results from earlier phases, enabling multi-step workflows where each agent builds on previous output. Results are visible via `GET /items/{key}`.
 
 ## Configuration
@@ -125,6 +128,7 @@ A checked-in copy lives at [`docs/openapi.json`](docs/openapi.json). Regenerate 
 | GET | `/api/v1/items` | List work items (filterable by `phase`, `event_type`) |
 | GET | `/api/v1/items/{key}` | Work item detail |
 | POST | `/api/v1/items/{key}/review` | Approve or deny a manual phase |
+| DELETE | `/api/v1/items/{key}` | Delete a failed work item |
 | GET | `/readiness` | Readiness probe (DB check) |
 | GET | `/liveness` | Liveness probe (reconciler check) |
 | GET | `/metrics` | Prometheus metrics (see below) |
@@ -145,36 +149,36 @@ A checked-in copy lives at [`docs/openapi.json`](docs/openapi.json). Regenerate 
 | `ols_automator_reconcile_cycle_duration_seconds` | Histogram | -- | Reconciliation loop iteration duration |
 | `ols_automator_items_released_stale_total` | Counter | -- | Items re-queued after stale lock timeout |
 
-### Event payload
+Request and response schemas for all endpoints are defined in the [OpenAPI spec](docs/openapi.json).
+See also the [local testing guide](local_testing/README.md) for concrete `curl` examples.
 
-The `content` field is an opaque string passed through to the agent as context. It can be plain text or a JSON string -- the automator does not parse it.
+## Extending the system
 
-```json
-{
-  "name": "HighMemoryUsage",
-  "type": "alert",
-  "content": "Pod frontend-abc is using 95% memory in namespace production",
-  "ts": "2026-04-07T12:00:00Z"
-}
-```
+No code changes are needed to support new event types or agents — everything is config-driven.
 
-```json
-{
-  "name": "deploy-frontend",
-  "type": "deployment",
-  "content": "{\"image\": \"frontend:v2.1\", \"replicas\": 3, \"namespace\": \"production\"}",
-  "ts": "2026-04-07T14:30:00Z"
-}
-```
+### Adding a new event type
 
-### Review payload
+1. Add the new type to an existing policy's `event_types` list, or create a new policy with its own phases
+2. Restart the automator
 
-```json
-{"command": "approve"}
-{"command": "deny", "reason": "not safe to execute in production"}
-```
+The reconciler will automatically pick up events matching the new type.
+
+### Adding a new agent
+
+1. Deploy an A2A-compatible agent (must serve `/.well-known/agent-card.json` and handle `send_message`)
+2. Add it to the `agents` list in the config YAML
+3. Restart the automator
+
+At startup, the automator discovers the agent's skills and indexes them into the RAG. Operations are routed to the best-matching skill automatically — no explicit mapping required.
+
+For local testing with stub agents, see the [local testing guide](local_testing/README.md#adding-more-test-agents).
 
 ## Development
+
+### Prerequisites
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (`make install-tools` will install it if missing)
 
 ```bash
 make install-deps-dev   # install runtime + dev dependencies
@@ -202,19 +206,3 @@ Tests use SQLite in-memory by default — no database setup required.
 | `images` | Build container image with podman |
 | `help` | Show all targets with descriptions |
 
-## Project layout
-
-```
-app/
-  main.py                  # FastAPI app, lifespan, probes
-  models/
-    models.py              # Pydantic models (Event, Policy, AgentConfig) + SQLAlchemy ORM (WorkItem)
-    config.py              # AppConfig loaded from YAML, DB engine, session management
-  routes/
-    events.py              # POST /events -- ingest and deduplicate
-    items.py               # GET/POST /items -- list, detail, review
-  services/
-    orchestrator.py        # Reconciliation loop, phase execution, A2A invocation
-    a2a_client.py          # A2A protocol client (fetch card, send message)
-    agent_rag.py           # Hybrid RAG for agent skill discovery and matching
-```

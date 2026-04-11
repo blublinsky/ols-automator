@@ -167,6 +167,47 @@
                         }
                     }
                 }
+            },
+            "delete": {
+                "tags": [
+                    "items"
+                ],
+                "summary": "Delete a failed work item",
+                "description": "Delete a work item that is in the failed state.",
+                "operationId": "delete_item_api_v1_items__key__delete",
+                "parameters": [
+                    {
+                        "name": "key",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeleteResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         "/api/v1/items/{key}/review": {
@@ -265,6 +306,24 @@
     },
     "components": {
         "schemas": {
+            "DeleteResponse": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "key": {
+                        "type": "string",
+                        "title": "Key"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "status",
+                    "key"
+                ],
+                "title": "DeleteResponse"
+            },
             "Event": {
                 "properties": {
                     "name": {

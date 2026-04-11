@@ -101,11 +101,61 @@ curl -s -X POST http://localhost:8080/api/v1/items/KEY/review \
 
 After approval, the remediation phase runs via cluster-ops, then completes.
 
-## 7. Check metrics
+## 7. Test denial and failed item cleanup
+
+Send another alert so we have something to deny:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "DiskPressure",
+    "type": "alert",
+    "content": "Node worker-3 is under disk pressure",
+    "ts": "2026-04-08T10:00:00Z"
+  }' | python -m json.tool
+```
+
+Wait a few seconds for the assess phase to complete, then deny it:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/items/KEY/review \
+  -H "Content-Type: application/json" \
+  -d '{"command": "deny", "reason": "not safe to execute in production"}' | python -m json.tool
+```
+
+Verify the item is now in `failed` state with the denial reason:
+
+```bash
+curl -s http://localhost:8080/api/v1/items/KEY | python -m json.tool
+```
+
+Expected: `"phase": "failed"` and `"failure_reason": "not safe to execute in production"`
+
+Delete the failed item:
+
+```bash
+curl -s -X DELETE http://localhost:8080/api/v1/items/KEY | python -m json.tool
+```
+
+Expected response: `{"status": "deleted", "key": "KEY"}`
+
+Try deleting it again — should return 404:
+
+```bash
+curl -s -X DELETE http://localhost:8080/api/v1/items/KEY | python -m json.tool
+```
+
+Expected response: `{"detail": "No failed work item 'KEY' found"}`
+
+## 8. Check metrics
 
 ```bash
 curl -s http://localhost:8080/metrics | grep ols_automator
 ```
+
+You should see counters for events received, phases completed/failed,
+reviews (approve/deny), and the failed item gauge back to zero after deletion.
 
 ## Auth flow
 

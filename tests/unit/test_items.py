@@ -1,8 +1,8 @@
-"""Unit tests for work-item endpoints — list, detail, review."""
+"""Unit tests for work-item endpoints — list, detail, review, delete."""
 
 import pytest
 
-from app.models.models import MANUAL, WorkItem
+from app.models.models import FAILED, MANUAL, WorkItem
 
 
 def _make_item(**overrides) -> WorkItem:
@@ -102,6 +102,10 @@ class TestReviewItem:
         assert data["status"] == "deny"
         assert data["phase"] == "failed"
 
+        detail = (await client.get("/api/v1/items/rev-002")).json()
+        assert detail["phase"] == "failed"
+        assert detail["failure_reason"] == "too risky"
+
     async def test_not_manual_rejected(self, client, app_config):
         async with app_config.session_factory() as s:
             s.add(_make_item(key="rev-003", phase="assess"))
@@ -127,3 +131,32 @@ class TestReviewItem:
             "/api/v1/items/rev-004/review", json={"command": "invalid"}
         )
         assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+class TestDeleteItem:
+    async def test_delete_failed_item(self, client, app_config):
+        async with app_config.session_factory() as s:
+            s.add(_make_item(key="del-001", phase=FAILED, ready=False))
+            await s.commit()
+
+        resp = await client.delete("/api/v1/items/del-001")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "deleted"
+        assert data["key"] == "del-001"
+
+        resp = await client.get("/api/v1/items/del-001")
+        assert resp.status_code == 404
+
+    async def test_delete_non_failed_rejected(self, client, app_config):
+        async with app_config.session_factory() as s:
+            s.add(_make_item(key="del-002", phase="assess"))
+            await s.commit()
+
+        resp = await client.delete("/api/v1/items/del-002")
+        assert resp.status_code == 404
+
+    async def test_delete_not_found(self, client):
+        resp = await client.delete("/api/v1/items/nonexistent")
+        assert resp.status_code == 404
