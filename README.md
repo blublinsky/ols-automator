@@ -125,7 +125,7 @@ A checked-in copy lives at [`docs/openapi.json`](docs/openapi.json). Regenerate 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/v1/events` | Ingest an event |
-| GET | `/api/v1/items` | List work items (filterable by `phase`, `event_type`) |
+| GET | `/api/v1/items` | List work items. Optional query parameters: `phase`, `event_type` (omit both to return all items). |
 | GET | `/api/v1/items/{key}` | Work item detail |
 | POST | `/api/v1/items/{key}/review` | Approve or deny a manual phase |
 | DELETE | `/api/v1/items/{key}` | Delete a failed work item |
