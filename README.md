@@ -1,6 +1,14 @@
 # OLS Automator
 
-Policy-driven event processing engine. Receives generic events via REST API, matches them to configurable multi-phase workflows, and delegates execution to remote A2A agents discovered at startup.
+## Overall vision
+
+![Extended OLS multi-agent automation overview](images/extended_OLS_multi_agent.png)
+
+Automating how events are processed and executed does not necessarily mean abandoning the existing OLS server and starting from scratch. It can be considered an evolution of what we already have by adding a separate workflow component—this automator—alongside the OLS server, keeping the existing OLS server in place, and, when that fits the workflow, allowing the OLS server to participate as one of several available agents whose skills may be invoked for individual steps.
+
+The extended OLS operator deploys and manages OLS Automator alongside the OLS server and the other components illustrated above.
+
+OLS Automator is a policy-driven event processing engine receiving generic events via REST API, matching them to configurable multi-phase workflows, and delegating execution to remote configured agents discovered at startup.
 
 ## Architecture
 
