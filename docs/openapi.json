@@ -167,47 +167,6 @@
                         }
                     }
                 }
-            },
-            "delete": {
-                "tags": [
-                    "items"
-                ],
-                "summary": "Delete a failed work item",
-                "description": "Delete a work item that is in the failed state.",
-                "operationId": "delete_item_api_v1_items__key__delete",
-                "parameters": [
-                    {
-                        "name": "key",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "Key"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/DeleteResponse"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
             }
         },
         "/api/v1/items/{key}/review": {
@@ -246,6 +205,59 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ReviewResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/items/{key}/failed": {
+            "post": {
+                "tags": [
+                    "items"
+                ],
+                "summary": "Delete or retry a failed work item",
+                "description": "Apply ``delete`` (remove row) or ``retry`` (re-queue automatic phase from ``failed_from_phase``).",
+                "operationId": "failed_item_action_api_v1_items__key__failed_post",
+                "parameters": [
+                    {
+                        "name": "key",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FailedItemActionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FailedItemActionResponse"
                                 }
                             }
                         }
@@ -306,24 +318,6 @@
     },
     "components": {
         "schemas": {
-            "DeleteResponse": {
-                "properties": {
-                    "status": {
-                        "type": "string",
-                        "title": "Status"
-                    },
-                    "key": {
-                        "type": "string",
-                        "title": "Key"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "status",
-                    "key"
-                ],
-                "title": "DeleteResponse"
-            },
             "Event": {
                 "properties": {
                     "name": {
@@ -381,6 +375,18 @@
                             }
                         ],
                         "title": "Reason"
+                    },
+                    "workload_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workload Id",
+                        "description": "Work item primary key when a policy matched (new insert or duplicate); None when the event was skipped."
                     }
                 },
                 "type": "object",
@@ -389,6 +395,52 @@
                 ],
                 "title": "EventResponse",
                 "description": "Response from the event ingestion endpoint."
+            },
+            "FailedItemActionRequest": {
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "enum": [
+                            "delete",
+                            "retry"
+                        ],
+                        "title": "Command"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "command"
+                ],
+                "title": "FailedItemActionRequest"
+            },
+            "FailedItemActionResponse": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "key": {
+                        "type": "string",
+                        "title": "Key"
+                    },
+                    "phase": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Phase"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "status",
+                    "key"
+                ],
+                "title": "FailedItemActionResponse"
             },
             "HTTPValidationError": {
                 "properties": {
@@ -545,6 +597,17 @@
                         ],
                         "title": "Failure Reason"
                     },
+                    "failed_from_phase": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Failed From Phase"
+                    },
                     "updated_at": {
                         "type": "string",
                         "format": "date-time",
@@ -564,6 +627,7 @@
                     "ready",
                     "step_results",
                     "failure_reason",
+                    "failed_from_phase",
                     "updated_at"
                 ],
                 "title": "WorkItemDetail",

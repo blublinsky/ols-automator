@@ -36,16 +36,19 @@ class TestSaveFailed:
         session.add(_make_item())
         await session.commit()
 
-        await _save_failed("item-001", "something broke")
+        await _save_failed(
+            "item-001", "something broke", failed_from_phase="assess"
+        )
 
         async with app_config.session_factory() as s:
             item = await s.get(WorkItem, "item-001")
         assert item.phase == FAILED
         assert item.ready is False
         assert item.failure_reason == "something broke"
+        assert item.failed_from_phase == "assess"
 
     async def test_missing_item_does_not_crash(self, app_config):
-        await _save_failed("nonexistent", "reason")
+        await _save_failed("nonexistent", "reason", failed_from_phase=None)
 
 
 @pytest.mark.asyncio
@@ -195,7 +198,11 @@ class TestRunPhase:
         app_config.skill_rag = mock_rag
         app_config.agent_cards = {"test-agent": card}
         app_config.agents = [
-            AgentConfig(name="test-agent", url="http://localhost:9999"),
+            AgentConfig(
+                name="test-agent",
+                url="http://localhost:9999",
+                invocation_timeout_seconds=90.0,
+            ),
         ]
 
         with patch(
@@ -205,6 +212,7 @@ class TestRunPhase:
         ) as mock_send:
             await _invoke_agent("execute remediation", item)
 
+        assert mock_send.call_args.kwargs["timeout_seconds"] == 90.0
         prompt = mock_send.call_args[0][1]
         assert "Previous results:" in prompt
         assert "[assess]: root cause: OOM" in prompt
@@ -229,6 +237,7 @@ class TestRunPhase:
             wi = await s.get(WorkItem, "item-001")
         assert wi.phase == FAILED
         assert "agent crashed" in wi.failure_reason
+        assert wi.failed_from_phase == "assess"
 
 
 @pytest.mark.asyncio

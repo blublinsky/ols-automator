@@ -14,6 +14,12 @@ reviews_total = Counter(
     ["command"],
 )
 
+failed_item_actions_total = Counter(
+    "ols_automator_failed_item_actions_total",
+    "Actions on failed work items (delete or retry)",
+    ["command"],
+)
+
 phases_completed_total = Counter(
     "ols_automator_phases_completed_total",
     "Total successful phase transitions",

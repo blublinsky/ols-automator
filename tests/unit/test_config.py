@@ -66,6 +66,59 @@ class TestFromYaml:
         assert cfg.policies[0].name == "test-policy"
         assert len(cfg.agents) == 1
         assert cfg.agents[0].name == "test-agent"
+        assert cfg.agents[0].invocation_timeout_seconds == 120.0
+
+    def test_yaml_agent_invocation_timeout_per_agent(self, tmp_path):
+        config = {
+            "database_url": "sqlite+aiosqlite://",
+            "policies": [
+                {
+                    "name": "p",
+                    "event_types": ["alert"],
+                    "phases": [
+                        {"name": "process", "mode": "automatic"},
+                        {"name": "completed"},
+                    ],
+                }
+            ],
+            "agents": [
+                {
+                    "name": "slow-agent",
+                    "url": "http://localhost:9000",
+                    "invocation_timeout_seconds": 600,
+                }
+            ],
+        }
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.dump(config))
+        cfg = AppConfig.from_yaml(path)
+        assert cfg.agents[0].invocation_timeout_seconds == 600.0
+
+    def test_yaml_agent_invocation_timeout_invalid_rejected(self, tmp_path):
+        config = {
+            "database_url": "sqlite+aiosqlite://",
+            "policies": [
+                {
+                    "name": "p",
+                    "event_types": ["alert"],
+                    "phases": [
+                        {"name": "process", "mode": "automatic"},
+                        {"name": "completed"},
+                    ],
+                }
+            ],
+            "agents": [
+                {
+                    "name": "bad",
+                    "url": "http://localhost:9000",
+                    "invocation_timeout_seconds": 0.5,
+                }
+            ],
+        }
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.dump(config))
+        with pytest.raises(Exception):
+            AppConfig.from_yaml(path)
 
     def test_env_overrides_database_url(self, tmp_path):
         config = {"database_url": "postgresql+asyncpg://original"}

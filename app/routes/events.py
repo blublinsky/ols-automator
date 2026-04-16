@@ -5,7 +5,7 @@ import logging
 import re
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,13 @@ class EventResponse(BaseModel):
     status: str
     stored: bool | None = None
     reason: str | None = None
+    workload_id: str | None = Field(
+        default=None,
+        description=(
+            "Work item primary key when a policy matched (new insert or duplicate); "
+            "None when the event was skipped."
+        ),
+    )
 
 
 @router.post("/events", response_model=EventResponse, summary="Ingest an event")
@@ -37,20 +44,26 @@ async def receive_event(
     if not policy:
         events_received_total.labels(event_type=event.type, status="skipped").inc()
         return EventResponse(
-            status="skipped", reason="no policy for this type of event"
+            status="skipped",
+            reason="no policy for this type of event",
+            workload_id=None,
         )
 
     first_phase = policy.first_phase().name
-    stored = await _store_event(session, event, policy, first_phase)
+    stored, workload_id = await _store_event(session, event, policy, first_phase)
     status = "stored" if stored else "duplicate"
     events_received_total.labels(event_type=event.type, status=status).inc()
-    return EventResponse(status="ok", stored=stored)
+    return EventResponse(status="ok", stored=stored, workload_id=workload_id)
 
 
 async def _store_event(
     session: AsyncSession, event: Event, policy: Policy, phase: str
-) -> bool:
-    """Deduplicate and store an event to DB. The reconciler picks it up."""
+) -> tuple[bool, str]:
+    """Deduplicate and store an event to DB. The reconciler picks it up.
+
+    Returns ``(stored, workload_id)`` where ``workload_id`` is the work item key
+    (whether the row was newly inserted or already existed).
+    """
     combined = f"{event.name}|{event.type}|{event.ts.isoformat()}"
     sanitized = _SANITIZE_RE.sub("-", event.name.lower())[:40]
     h = hashlib.sha256(combined.encode()).hexdigest()[:8]
@@ -73,7 +86,7 @@ async def _store_event(
     except IntegrityError:
         await session.rollback()
         logger.debug("Event %s already exists, skipping", key)
-        return False
+        return False, key
 
     logger.info("Stored event %s (policy: %s, phase: %s)", key, policy.name, phase)
-    return True
+    return True, key

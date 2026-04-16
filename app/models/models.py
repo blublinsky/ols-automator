@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Final, Literal, Self
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import String, Text, Boolean, DateTime, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql.functions import now
@@ -81,6 +81,8 @@ class Policy(BaseModel):
 
 # --- Agent ---
 
+DEFAULT_INVOCATION_TIMEOUT_SECONDS = 120.0
+
 
 class AgentConfig(BaseModel):
     """A remote agent reachable via A2A."""
@@ -89,7 +91,12 @@ class AgentConfig(BaseModel):
     url: str
     headers: dict[str, str] | None = None
     token_path: str = SA_TOKEN_PATH
-    timeout: int = 30
+
+    invocation_timeout_seconds: float = Field(
+        default=DEFAULT_INVOCATION_TIMEOUT_SECONDS,
+        ge=10.0,
+        description="Wall-clock cap for each A2A send_message to this agent during workflow phases.",
+    )
 
     def resolve_headers(self) -> dict[str, str]:
         """Build request headers, resolving a Bearer token from (in order):
@@ -133,6 +140,7 @@ class WorkItem(Base):
     policy_name: Mapped[str] = mapped_column(String(256))
     step_results: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failed_from_phase: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=now()

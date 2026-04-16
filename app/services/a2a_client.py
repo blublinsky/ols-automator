@@ -1,13 +1,16 @@
 """A2A client — invoke remote agents directly without LangChain."""
 
+import asyncio
 import logging
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 from uuid import uuid4
 
 import httpx
 from a2a.client.card_resolver import A2ACardResolver
 from a2a.client.client import ClientConfig
 from a2a.client.client_factory import ClientFactory
+from a2a.client.errors import A2AClientHTTPError, A2AClientTimeoutError
 from a2a.client.middleware import ClientCallContext, ClientCallInterceptor
 from a2a.types import (
     AgentCard,
@@ -19,7 +22,65 @@ from a2a.types import (
     TextPart,
 )
 
+from app.models.models import DEFAULT_INVOCATION_TIMEOUT_SECONDS
+
 logger = logging.getLogger(__name__)
+
+# Fixed ceiling for agent-card HTTP fetch at startup (not workflow send_message).
+_AGENT_CARD_FETCH_TIMEOUT_SECONDS = 30
+
+_RETRIABLE_HTTP_STATUS = frozenset({502, 503, 504})
+
+# Shared exponential backoff for transient HTTP/A2A failures (card fetch + send_message).
+_TRANSIENT_RETRY_MAX_EXTRA = 3
+_TRANSIENT_RETRY_BACKOFF_BASE_SECONDS = 0.5
+
+T = TypeVar("T")
+
+
+def transient_invocation_error(exc: BaseException) -> bool:
+    """True if the error may be worth retrying (timeouts, transport, 502/503/504)."""
+    if isinstance(exc, A2AClientTimeoutError):
+        return True
+    if isinstance(exc, A2AClientHTTPError):
+        return exc.status_code in _RETRIABLE_HTTP_STATUS
+    if isinstance(exc, httpx.TimeoutException):
+        return True
+    if isinstance(exc, (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError)):
+        return True
+    return False
+
+
+async def _async_retry_on_transient(
+    op_label: str,
+    attempt_fn: Callable[[], Awaitable[T]],
+    *,
+    max_extra_retries: int,
+    backoff_base_seconds: float,
+    is_transient: Callable[[BaseException], bool] = transient_invocation_error,
+) -> T:
+    """Run ``attempt_fn`` until success or give up; sleep exponentially between transient failures."""
+    max_attempts = 1 + max_extra_retries
+    last_error: BaseException | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await attempt_fn()
+        except BaseException as e:
+            last_error = e
+            if not is_transient(e) or attempt >= max_attempts:
+                raise
+            delay = backoff_base_seconds * (2 ** (attempt - 1))
+            logger.warning(
+                "Transient error in %s (attempt %d/%d): %s; retrying in %.2fs",
+                op_label,
+                attempt,
+                max_attempts,
+                e,
+                delay,
+            )
+            await asyncio.sleep(delay)
+    assert last_error is not None
+    raise last_error
 
 
 class _HeaderInterceptor(ClientCallInterceptor):
@@ -46,15 +107,24 @@ class _HeaderInterceptor(ClientCallInterceptor):
 async def fetch_agent_card(
     base_url: str,
     headers: dict[str, str] | None = None,
-    timeout: int = 30,
+    timeout: int = _AGENT_CARD_FETCH_TIMEOUT_SECONDS,
 ) -> AgentCard:
     """Fetch an A2A agent card from its well-known endpoint."""
     logger.info("Fetching agent card from %s", base_url)
-    async with httpx.AsyncClient(
-        headers=headers or {}, timeout=httpx.Timeout(timeout)
-    ) as http:
-        resolver = A2ACardResolver(http, base_url)
-        card = await resolver.get_agent_card()
+
+    async def _attempt() -> AgentCard:
+        async with httpx.AsyncClient(
+            headers=headers or {}, timeout=httpx.Timeout(timeout)
+        ) as http:
+            resolver = A2ACardResolver(http, base_url)
+            return await resolver.get_agent_card()
+
+    card = await _async_retry_on_transient(
+        f"fetch_agent_card({base_url})",
+        _attempt,
+        max_extra_retries=_TRANSIENT_RETRY_MAX_EXTRA,
+        backoff_base_seconds=_TRANSIENT_RETRY_BACKOFF_BASE_SECONDS,
+    )
     skill_count = len(card.skills) if card.skills else 0
     logger.info("Discovered agent '%s' (%d skills)", card.name, skill_count)
     return card
@@ -88,36 +158,23 @@ def _extract_task_text(task: Task) -> str:
     return "\n".join(parts) if parts else ""
 
 
-async def send_message(
+async def _send_message_once(
     card: AgentCard,
-    text: str,
-    headers: dict[str, str] | None = None,
-    skill_id: str | None = None,
+    message: Message,
+    interceptors: list[ClientCallInterceptor],
+    request_metadata: dict[str, str] | None,
+    timeout_seconds: float,
 ) -> str:
-    """Send a text message to an A2A agent and return the response text."""
-    request_metadata: dict[str, str] = {}
-    if skill_id:
-        request_metadata["skill_id"] = skill_id
-
-    message = Message(
-        message_id=uuid4().hex,
-        role=Role.user,
-        parts=[Part(root=TextPart(text=text))],
-    )
-
-    interceptors: list[ClientCallInterceptor] = []
-    if headers:
-        interceptors.append(_HeaderInterceptor(headers))
-
-    client = ClientFactory(ClientConfig(streaming=False)).create(
-        card, interceptors=interceptors
-    )
-
-    logger.info("Sending message to %s (skill=%s)", card.name, skill_id or "none")
+    """One A2A client lifecycle: open transport, stream ``send_message``, close."""
+    http_timeout = httpx.Timeout(timeout_seconds)
+    http_client = httpx.AsyncClient(timeout=http_timeout)
+    client = ClientFactory(
+        ClientConfig(streaming=False, httpx_client=http_client)
+    ).create(card, interceptors=interceptors)
 
     try:
         async for event in client.send_message(
-            message, request_metadata=request_metadata or None
+            message, request_metadata=request_metadata
         ):
             if isinstance(event, tuple):
                 task, _ = event
@@ -150,3 +207,57 @@ async def send_message(
         await client.close()  # type: ignore[attr-defined]
 
     return ""
+
+
+async def send_message(
+    card: AgentCard,
+    text: str,
+    headers: dict[str, str] | None = None,
+    skill_id: str | None = None,
+    *,
+    timeout_seconds: float = DEFAULT_INVOCATION_TIMEOUT_SECONDS,
+) -> str:
+    """Send a text message to an A2A agent and return the response text.
+
+    ``timeout_seconds`` is applied to the outbound HTTP client (connect, read,
+    write, pool) for each attempt. Transient failures (timeouts, transport
+    errors, HTTP 502/503/504) are retried with exponential backoff; see
+    ``_TRANSIENT_RETRY_MAX_EXTRA`` and ``_TRANSIENT_RETRY_BACKOFF_BASE_SECONDS``.
+    """
+    request_metadata: dict[str, str] | None = None
+    if skill_id:
+        request_metadata = {"skill_id": skill_id}
+
+    interceptors: list[ClientCallInterceptor] = []
+    if headers:
+        interceptors.append(_HeaderInterceptor(headers))
+
+    max_attempts = 1 + _TRANSIENT_RETRY_MAX_EXTRA
+    logger.info(
+        "Sending message to %s (skill=%s, timeout=%ss, max_attempts=%s)",
+        card.name,
+        skill_id or "none",
+        timeout_seconds,
+        max_attempts,
+    )
+
+    async def _attempt() -> str:
+        message = Message(
+            message_id=uuid4().hex,
+            role=Role.user,
+            parts=[Part(root=TextPart(text=text))],
+        )
+        return await _send_message_once(
+            card,
+            message,
+            interceptors,
+            request_metadata,
+            timeout_seconds,
+        )
+
+    return await _async_retry_on_transient(
+        f"send_message({card.name})",
+        _attempt,
+        max_extra_retries=_TRANSIENT_RETRY_MAX_EXTRA,
+        backoff_base_seconds=_TRANSIENT_RETRY_BACKOFF_BASE_SECONDS,
+    )

@@ -97,14 +97,18 @@ async def _run_phase(item: WorkItem, policy: Policy, phase_config: PhaseConfig) 
         logger.exception(
             "Agent failed for (%s, %s) on %s", item.event_type, item.phase, item_id
         )
-        await _save_failed(item_id, str(e))
+        await _save_failed(
+            item_id, str(e), failed_from_phase=phase_config.name
+        )
         metrics.phases_failed_total.labels(policy=policy.name, phase=item.phase).inc()
         return
 
     next_config = policy.next_phase(item.phase)
     if not next_config:
         await _save_failed(
-            item_id, f"No phase after '{item.phase}' in policy '{policy.name}'"
+            item_id,
+            f"No phase after '{item.phase}' in policy '{policy.name}'",
+            failed_from_phase=item.phase,
         )
         metrics.phases_failed_total.labels(policy=policy.name, phase=item.phase).inc()
         return
@@ -156,6 +160,7 @@ async def _invoke_agent(operation: str, item: WorkItem) -> str:
         raise RuntimeError(f"No cached card for agent '{agent_name}'")
 
     headers = agent.resolve_headers()
+    invoke_timeout = agent.invocation_timeout_seconds
 
     parts = [operation, "", "Context:", item.event_content]
     if item.step_results:
@@ -166,15 +171,31 @@ async def _invoke_agent(operation: str, item: WorkItem) -> str:
     prompt = "\n".join(parts)
     t0 = time.monotonic()
     try:
-        return await send_message(card, prompt, headers, skill_id)
+        return await send_message(
+            card,
+            prompt,
+            headers,
+            skill_id,
+            timeout_seconds=invoke_timeout,
+        )
     finally:
         metrics.agent_invocation_duration_seconds.labels(agent=agent_name).observe(
             time.monotonic() - t0
         )
 
 
-async def _save_failed(item_id: str, reason: str = ""):
-    """Mark a work item as failed with an optional reason."""
+async def _save_failed(
+    item_id: str,
+    reason: str = "",
+    *,
+    failed_from_phase: str | None,
+):
+    """Mark a work item as failed with an optional reason.
+
+    ``failed_from_phase`` is the workflow phase the item was in when an automatic
+    step failed; use ``None`` when failure is not from an automatic phase (e.g.
+    manual denial).
+    """
     async with get_config().session_factory() as session:
         wi = await session.get(WorkItem, item_id)
         if not wi:
@@ -184,6 +205,7 @@ async def _save_failed(item_id: str, reason: str = ""):
         wi.ready = False
         wi.locked_at = None
         wi.failure_reason = reason
+        wi.failed_from_phase = failed_from_phase
         await session.commit()
 
 

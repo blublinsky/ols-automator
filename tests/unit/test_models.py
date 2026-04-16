@@ -95,8 +95,16 @@ class TestPolicy:
 class TestAgentConfig:
     def test_defaults(self):
         a = AgentConfig(name="test", url="http://localhost:8080")
-        assert a.timeout == 30
+        assert a.invocation_timeout_seconds == 120.0
         assert a.headers is None
+
+    def test_invocation_timeout_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            AgentConfig(
+                name="t",
+                url="http://x",
+                invocation_timeout_seconds=0.5,
+            )
 
     def test_resolve_headers_explicit(self):
         a = AgentConfig(name="t", url="http://x", headers={"X-Custom": "val"})

@@ -17,11 +17,15 @@ from a2a.types import (
     TextPart,
 )
 
+from a2a.client.errors import A2AClientHTTPError, A2AClientTimeoutError
+
 from app.services.a2a_client import (
     _HeaderInterceptor,
+    _async_retry_on_transient,
     _extract_task_text,
     fetch_agent_card,
     send_message,
+    transient_invocation_error,
 )
 
 
@@ -117,6 +121,58 @@ class TestHeaderInterceptor:
 # ---------------------------------------------------------------------------
 # _extract_task_text
 # ---------------------------------------------------------------------------
+
+
+class TestTransientInvocationError:
+    def test_timeout_error(self):
+        assert transient_invocation_error(A2AClientTimeoutError("x"))
+
+    def test_retriable_http(self):
+        assert transient_invocation_error(A2AClientHTTPError(503, "x"))
+        assert transient_invocation_error(A2AClientHTTPError(502, "x"))
+        assert not transient_invocation_error(A2AClientHTTPError(404, "x"))
+
+    def test_runtime_error_not_transient(self):
+        assert not transient_invocation_error(RuntimeError("agent failed"))
+
+
+class TestAsyncRetryOnTransient:
+    @pytest.mark.asyncio
+    async def test_succeeds_after_one_transient_failure(self):
+        n = 0
+
+        async def attempt():
+            nonlocal n
+            n += 1
+            if n < 2:
+                raise A2AClientTimeoutError("timeout")
+            return "ok"
+
+        with patch("app.services.a2a_client.asyncio.sleep", new_callable=AsyncMock):
+            result = await _async_retry_on_transient(
+                "test-op",
+                attempt,
+                max_extra_retries=3,
+                backoff_base_seconds=0.01,
+            )
+        assert result == "ok"
+        assert n == 2
+
+    @pytest.mark.asyncio
+    async def test_raises_after_exhausting_retries(self):
+        async def attempt():
+            raise A2AClientTimeoutError("always")
+
+        with (
+            patch("app.services.a2a_client.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(A2AClientTimeoutError),
+        ):
+            await _async_retry_on_transient(
+                "test-op",
+                attempt,
+                max_extra_retries=1,
+                backoff_base_seconds=0.01,
+            )
 
 
 class TestExtractTaskText:
@@ -262,3 +318,21 @@ class TestSendMessage:
         interceptors = mock_create.call_args.kwargs["interceptors"]
         assert len(interceptors) == 1
         assert isinstance(interceptors[0], _HeaderInterceptor)
+
+    @pytest.mark.asyncio
+    async def test_client_config_uses_httpx_timeout(self):
+        card = _make_card()
+        task = _make_task(artifact_text="ok")
+
+        mock_client = MagicMock()
+        mock_client.send_message.return_value = _AsyncIterFromList([(task, None)])
+        mock_client.close = AsyncMock()
+
+        with patch("app.services.a2a_client.ClientFactory") as factory_cls:
+            factory_cls.return_value.create.return_value = mock_client
+            await send_message(card, "hello", timeout_seconds=42.0)
+
+        client_config = factory_cls.call_args[0][0]
+        assert client_config.httpx_client is not None
+        assert client_config.httpx_client.timeout.connect == 42.0
+        assert client_config.httpx_client.timeout.read == 42.0

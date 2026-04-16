@@ -34,4 +34,4 @@ policies:
 agents:
   - name: ols
     url: http://lightspeed-app-server.openshift-lightspeed.svc:8080
-    timeout: 30
+    invocation_timeout_seconds: 120

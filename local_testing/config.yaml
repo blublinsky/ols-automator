@@ -28,7 +28,5 @@ policies:
 agents:
   - name: cluster-ops
     url: http://localhost:9090
-    timeout: 30
   - name: deployer
     url: http://localhost:9091
-    timeout: 30

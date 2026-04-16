@@ -5,6 +5,7 @@ from prometheus_client import Counter, Gauge, Histogram
 from app.metrics import (
     agent_invocation_duration_seconds,
     events_received_total,
+    failed_item_actions_total,
     items_failed,
     items_in_flight,
     items_ready,
@@ -22,6 +23,7 @@ class TestMetricTypes:
         for metric in (
             events_received_total,
             reviews_total,
+            failed_item_actions_total,
             phases_completed_total,
             phases_failed_total,
             items_released_stale_total,
@@ -50,6 +52,7 @@ class TestMetricNames:
         metrics = [
             events_received_total,
             reviews_total,
+            failed_item_actions_total,
             phases_completed_total,
             phases_failed_total,
             items_waiting_manual,
@@ -71,6 +74,9 @@ class TestMetricLabels:
 
     def test_reviews_labels(self):
         assert reviews_total._labelnames == ("command",)
+
+    def test_failed_item_actions_labels(self):
+        assert failed_item_actions_total._labelnames == ("command",)
 
     def test_phases_completed_labels(self):
         assert phases_completed_total._labelnames == ("policy", "phase")

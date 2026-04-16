@@ -1,4 +1,4 @@
-"""Work item endpoints — list, detail, review, and delete."""
+"""Work item endpoints — list, detail, review, and failed-item actions."""
 
 import logging
 from datetime import datetime
@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.metrics import reviews_total
+from app.metrics import failed_item_actions_total, reviews_total
 from app.models.config import get_config, get_session
 from app.models.models import WorkItem, MANUAL, FAILED
 
@@ -39,6 +39,7 @@ class WorkItemDetail(WorkItemSummary):
     ready: bool
     step_results: dict[str, str]
     failure_reason: str | None
+    failed_from_phase: str | None
     updated_at: datetime
 
 
@@ -127,6 +128,7 @@ async def review_item(
             item.phase = FAILED
             item.ready = False
             item.failure_reason = body.reason
+            item.failed_from_phase = None
             logger.info("Work item %s denied: %s", key, body.reason)
 
     item.mode = None
@@ -138,32 +140,76 @@ async def review_item(
     return ReviewResponse(status=body.command, key=key, phase=phase)
 
 
-class DeleteResponse(BaseModel):
+class FailedItemActionRequest(BaseModel):
+    command: Literal["delete", "retry"]
+
+
+class FailedItemActionResponse(BaseModel):
     status: str
     key: str
+    phase: str | None = None
 
 
-@router.delete(
-    "/items/{key}",
-    response_model=DeleteResponse,
-    summary="Delete a failed work item",
+@router.post(
+    "/items/{key}/failed",
+    response_model=FailedItemActionResponse,
+    summary="Delete or retry a failed work item",
 )
-async def delete_item(
+async def failed_item_action(
     key: str,
+    body: FailedItemActionRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Delete a work item that is in the failed state."""
-    result = await session.execute(
-        select(WorkItem).where(WorkItem.key == key, WorkItem.phase == FAILED)
-    )
-    item = result.scalar_one_or_none()
+    """Apply ``delete`` (remove row) or ``retry`` (re-queue automatic phase from ``failed_from_phase``)."""
+    item = await session.get(WorkItem, key)
     if not item:
-        raise HTTPException(404, f"No failed work item '{key}' found")
+        raise HTTPException(404, f"Work item {key} not found")
+    if item.phase != FAILED:
+        raise HTTPException(
+            400, f"Work item is not in failed state (phase={item.phase})"
+        )
 
-    await session.delete(item)
-    await session.commit()
-    logger.info("Deleted failed work item %s", key)
-    return DeleteResponse(status="deleted", key=key)
+    match body.command:
+        case "delete":
+            await session.delete(item)
+            await session.commit()
+            logger.info("Deleted failed work item %s", key)
+            failed_item_actions_total.labels(command="delete").inc()
+            return FailedItemActionResponse(status="deleted", key=key, phase=None)
+
+        case "retry":
+            restore_phase = item.failed_from_phase
+            if not restore_phase:
+                raise HTTPException(
+                    400,
+                    "Cannot retry: item has no failed_from_phase "
+                    "(e.g. manual denial or legacy row)",
+                )
+            event_type: str = item.event_type  # type: ignore[assignment]
+            policy = get_config().match_policy(event_type)
+            if not policy or not policy.get_phase(restore_phase):
+                raise HTTPException(
+                    400,
+                    f"Cannot retry: phase '{restore_phase}' is not defined "
+                    f"for event type '{event_type}' in the current policy",
+                )
+            results = dict(item.step_results or {})
+            results.pop(restore_phase, None)
+            item.step_results = results
+            item.phase = restore_phase
+            item.ready = True
+            item.failure_reason = None
+            item.failed_from_phase = None
+            item.mode = None
+            item.locked_at = None
+            await session.commit()
+            logger.info(
+                "Retried failed work item %s → phase %s", key, restore_phase
+            )
+            failed_item_actions_total.labels(command="retry").inc()
+            return FailedItemActionResponse(
+                status="retried", key=key, phase=restore_phase
+            )
 
 
 # --- ORM to Pydantic conversion ---
@@ -193,6 +239,7 @@ def _to_detail(item: WorkItem) -> WorkItemDetail:
         policy_name=item.policy_name,
         step_results=item.step_results,
         failure_reason=item.failure_reason,
+        failed_from_phase=item.failed_from_phase,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )

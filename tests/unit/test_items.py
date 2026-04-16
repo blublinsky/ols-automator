@@ -1,4 +1,4 @@
-"""Unit tests for work-item endpoints — list, detail, review, delete."""
+"""Unit tests for work-item endpoints — list, detail, review, failed actions."""
 
 import pytest
 
@@ -105,6 +105,7 @@ class TestReviewItem:
         detail = (await client.get("/api/v1/items/rev-002")).json()
         assert detail["phase"] == "failed"
         assert detail["failure_reason"] == "too risky"
+        assert detail["failed_from_phase"] is None
 
     async def test_not_manual_rejected(self, client, app_config):
         async with app_config.session_factory() as s:
@@ -134,17 +135,21 @@ class TestReviewItem:
 
 
 @pytest.mark.asyncio
-class TestDeleteItem:
+class TestFailedItemAction:
     async def test_delete_failed_item(self, client, app_config):
         async with app_config.session_factory() as s:
             s.add(_make_item(key="del-001", phase=FAILED, ready=False))
             await s.commit()
 
-        resp = await client.delete("/api/v1/items/del-001")
+        resp = await client.post(
+            "/api/v1/items/del-001/failed",
+            json={"command": "delete"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "deleted"
         assert data["key"] == "del-001"
+        assert data["phase"] is None
 
         resp = await client.get("/api/v1/items/del-001")
         assert resp.status_code == 404
@@ -154,9 +159,84 @@ class TestDeleteItem:
             s.add(_make_item(key="del-002", phase="assess"))
             await s.commit()
 
-        resp = await client.delete("/api/v1/items/del-002")
-        assert resp.status_code == 404
+        resp = await client.post(
+            "/api/v1/items/del-002/failed",
+            json={"command": "delete"},
+        )
+        assert resp.status_code == 400
 
     async def test_delete_not_found(self, client):
-        resp = await client.delete("/api/v1/items/nonexistent")
+        resp = await client.post(
+            "/api/v1/items/nonexistent/failed",
+            json={"command": "delete"},
+        )
         assert resp.status_code == 404
+
+    async def test_retry_restores_phase(self, client, app_config):
+        async with app_config.session_factory() as s:
+            s.add(
+                _make_item(
+                    key="retry-001",
+                    phase=FAILED,
+                    ready=False,
+                    failed_from_phase="assess",
+                    failure_reason="timeout",
+                    step_results={"assess": "stale"},
+                )
+            )
+            await s.commit()
+
+        resp = await client.post(
+            "/api/v1/items/retry-001/failed",
+            json={"command": "retry"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "retried"
+        assert data["key"] == "retry-001"
+        assert data["phase"] == "assess"
+
+        detail = (await client.get("/api/v1/items/retry-001")).json()
+        assert detail["phase"] == "assess"
+        assert detail["ready"] is True
+        assert detail["failure_reason"] is None
+        assert detail["failed_from_phase"] is None
+        assert "assess" not in detail["step_results"]
+
+    async def test_retry_without_failed_from_phase_rejected(self, client, app_config):
+        async with app_config.session_factory() as s:
+            s.add(
+                _make_item(
+                    key="retry-002",
+                    phase=FAILED,
+                    ready=False,
+                    failed_from_phase=None,
+                    failure_reason="denied",
+                )
+            )
+            await s.commit()
+
+        resp = await client.post(
+            "/api/v1/items/retry-002/failed",
+            json={"command": "retry"},
+        )
+        assert resp.status_code == 400
+
+    async def test_retry_unknown_phase_rejected(self, client, app_config):
+        async with app_config.session_factory() as s:
+            s.add(
+                _make_item(
+                    key="retry-003",
+                    phase=FAILED,
+                    ready=False,
+                    failed_from_phase="nonexistent-phase",
+                    failure_reason="x",
+                )
+            )
+            await s.commit()
+
+        resp = await client.post(
+            "/api/v1/items/retry-003/failed",
+            json={"command": "retry"},
+        )
+        assert resp.status_code == 400

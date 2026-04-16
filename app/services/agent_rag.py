@@ -414,9 +414,7 @@ async def discover_agents(agents: list[AgentConfig]) -> AgentSkillRAG | None:
 
     for agent in agents:
         try:
-            card = await fetch_agent_card(
-                agent.url, agent.resolve_headers(), agent.timeout
-            )
+            card = await fetch_agent_card(agent.url, agent.resolve_headers())
             cfg.agent_cards[agent.name] = card
             skill_count = len(card.skills) if card.skills else 0
             rag.populate(agent.name, card.skills)

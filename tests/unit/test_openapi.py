@@ -9,6 +9,7 @@ EXPECTED_ENDPOINTS = (
     "/api/v1/events",
     "/api/v1/items",
     "/api/v1/items/{key}",
+    "/api/v1/items/{key}/failed",
     "/api/v1/items/{key}/review",
     "/readiness",
     "/liveness",
@@ -17,7 +18,8 @@ EXPECTED_ENDPOINTS = (
 EXPECTED_SCHEMAS = (
     "Event",
     "EventResponse",
-    "DeleteResponse",
+    "FailedItemActionRequest",
+    "FailedItemActionResponse",
     "ReviewRequest",
     "ReviewResponse",
     "WorkItemSummary",

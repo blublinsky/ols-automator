@@ -132,21 +132,31 @@ curl -s http://localhost:8080/api/v1/items/KEY | python -m json.tool
 
 Expected: `"phase": "failed"` and `"failure_reason": "not safe to execute in production"`
 
-Delete the failed item:
+Delete the failed item (or retry if it failed from an automatic phase and `failed_from_phase` is set):
 
 ```bash
-curl -s -X DELETE http://localhost:8080/api/v1/items/KEY | python -m json.tool
+curl -s -X POST http://localhost:8080/api/v1/items/KEY/failed \
+  -H "Content-Type: application/json" \
+  -d '{"command":"delete"}' | python -m json.tool
 ```
 
-Expected response: `{"status": "deleted", "key": "KEY"}`
+Expected response: `{"status": "deleted", "key": "KEY", "phase": null}`
 
-Try deleting it again — should return 404:
+To re-queue the automatic phase instead (only when `failed_from_phase` is present on the item):
 
 ```bash
-curl -s -X DELETE http://localhost:8080/api/v1/items/KEY | python -m json.tool
+curl -s -X POST http://localhost:8080/api/v1/items/KEY/failed \
+  -H "Content-Type: application/json" \
+  -d '{"command":"retry"}' | python -m json.tool
 ```
 
-Expected response: `{"detail": "No failed work item 'KEY' found"}`
+Try deleting again — should return 404 (item no longer exists):
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/items/KEY/failed \
+  -H "Content-Type: application/json" \
+  -d '{"command":"delete"}' | python -m json.tool
+```
 
 ## 8. Check metrics
 
